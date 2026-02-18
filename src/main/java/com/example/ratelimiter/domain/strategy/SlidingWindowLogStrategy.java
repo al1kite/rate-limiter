@@ -27,38 +27,46 @@ import java.util.List;
 public class SlidingWindowLogStrategy implements RateLimitStrategy {
     
     private static final String KEY_PREFIX = "rate_limit:sliding_window_log:";
-    
+
     private final RedisScriptExecutor scriptExecutor;
     private final int limit;       // 윈도우당 최대 요청 수
     private final int windowSize;  // 윈도우 크기 (초)
-    
+
     private static final String LUA_SCRIPT = """
             local key = KEYS[1]
             local limit = tonumber(ARGV[1])
             local window = tonumber(ARGV[2])
-            local now = tonumber(ARGV[3])
-            
+
+            -- Issue #1: Redis 서버 시간 사용 (clock skew 방지)
+            local time = redis.call('TIME')
+            local now = tonumber(time[1]) + tonumber(time[2]) / 1000000
+
             local log_key = key .. ":log"
-            
+            local seq_key = key .. ":seq"
+
             -- 윈도우 밖의 오래된 요청 제거
             local window_start = now - window
             redis.call("ZREMRANGEBYSCORE", log_key, 0, window_start)
-            
+
             -- 현재 윈도우 내 요청 수 확인
             local current = redis.call("ZCARD", log_key)
-            
+
             -- 요청 허용 여부 확인
             local allowed = current < limit
-            
+
             if allowed then
-                -- 새 요청 타임스탬프 추가
-                -- score와 member를 구분하기 위해 member에 미세한 난수 추가
-                local member = now .. ":" .. math.random(1000000)
+                -- Issue #4: math.random 제거
+                -- time[1]:"time[2] 조합은 같은 마이크로초 내 복수 요청 시 ZADD가
+                -- 새 entry 추가 대신 기존 score를 갱신하여 undercounting 발생.
+                -- 원자적 INCR 시퀀스를 suffix로 추가하여 멤버 고유성 보장.
+                local seq = redis.call("INCR", seq_key)
+                redis.call("EXPIRE", seq_key, window * 2)
+                local member = time[1] .. ":" .. time[2] .. ":" .. seq
                 redis.call("ZADD", log_key, now, member)
                 redis.call("EXPIRE", log_key, window * 2)
                 current = current + 1
             end
-            
+
             return {
                 allowed and 1 or 0,
                 current,
@@ -69,29 +77,27 @@ public class SlidingWindowLogStrategy implements RateLimitStrategy {
     
     public SlidingWindowLogStrategy(RedisScriptExecutor scriptExecutor, int limit, int windowSize) {
         if (limit <= 0) {
-            throw new IllegalArgumentException("Limit must be positive");
+            throw new IllegalArgumentException("Limit must be positive: " + limit);
         }
         if (windowSize <= 0) {
-            throw new IllegalArgumentException("Window size must be positive");
+            throw new IllegalArgumentException("Window size must be positive: " + windowSize);
         }
-        
+
         this.scriptExecutor = scriptExecutor;
         this.limit = limit;
         this.windowSize = windowSize;
     }
-    
+
     @Override
     public RateLimitResult allowRequest(String identifier) {
         String key = KEY_PREFIX + identifier;
-        long now = System.currentTimeMillis() / 1000;
-        
+
         List<Long> result = scriptExecutor.executeLuaScript(
                 LUA_SCRIPT,
                 List.of(key),
                 List.of(
                         String.valueOf(limit),
-                        String.valueOf(windowSize),
-                        String.valueOf(now)
+                        String.valueOf(windowSize)
                 )
         );
         
@@ -110,7 +116,7 @@ public class SlidingWindowLogStrategy implements RateLimitStrategy {
     @Override
     public void reset(String identifier) {
         String key = KEY_PREFIX + identifier;
-        scriptExecutor.deleteKeys(key + ":log");
+        scriptExecutor.deleteKeys(key + ":log", key + ":seq");
     }
     
     @Override

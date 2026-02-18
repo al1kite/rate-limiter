@@ -28,39 +28,42 @@ import java.util.List;
 public class FixedWindowStrategy implements RateLimitStrategy {
     
     private static final String KEY_PREFIX = "rate_limit:fixed_window:";
-    
+
     private final RedisScriptExecutor scriptExecutor;
     private final int limit;       // 윈도우당 최대 요청 수
     private final int windowSize;  // 윈도우 크기 (초)
-    
+
     private static final String LUA_SCRIPT = """
             local key = KEYS[1]
             local limit = tonumber(ARGV[1])
             local window = tonumber(ARGV[2])
-            local now = tonumber(ARGV[3])
-            
+
+            -- Issue #1: Redis 서버 시간 사용 (clock skew 방지)
+            local time = redis.call('TIME')
+            local now = tonumber(time[1]) + tonumber(time[2]) / 1000000
+
             -- 현재 윈도우 키 생성
             local window_id = math.floor(now / window)
             local window_key = key .. ":" .. window_id
-            
+
             -- 현재 카운트 가져오기
             local current = tonumber(redis.call("GET", window_key))
-            
+
             if current == nil then
                 current = 0
             end
-            
+
             -- 요청 허용 여부 확인
             local allowed = current < limit
-            
+
             if allowed then
                 current = redis.call("INCR", window_key)
                 redis.call("EXPIRE", window_key, window * 2)
             end
-            
+
             -- 윈도우 리셋 시간 계산
             local reset_at = (window_id + 1) * window
-            
+
             return {
                 allowed and 1 or 0,
                 current,
@@ -71,29 +74,27 @@ public class FixedWindowStrategy implements RateLimitStrategy {
     
     public FixedWindowStrategy(RedisScriptExecutor scriptExecutor, int limit, int windowSize) {
         if (limit <= 0) {
-            throw new IllegalArgumentException("Limit must be positive");
+            throw new IllegalArgumentException("Limit must be positive: " + limit);
         }
         if (windowSize <= 0) {
-            throw new IllegalArgumentException("Window size must be positive");
+            throw new IllegalArgumentException("Window size must be positive: " + windowSize);
         }
-        
+
         this.scriptExecutor = scriptExecutor;
         this.limit = limit;
         this.windowSize = windowSize;
     }
-    
+
     @Override
     public RateLimitResult allowRequest(String identifier) {
         String key = KEY_PREFIX + identifier;
-        long now = System.currentTimeMillis() / 1000;
-        
+
         List<Long> result = scriptExecutor.executeLuaScript(
                 LUA_SCRIPT,
                 List.of(key),
                 List.of(
                         String.valueOf(limit),
-                        String.valueOf(windowSize),
-                        String.valueOf(now)
+                        String.valueOf(windowSize)
                 )
         );
         
