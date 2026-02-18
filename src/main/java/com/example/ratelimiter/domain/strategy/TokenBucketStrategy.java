@@ -44,43 +44,46 @@ public class TokenBucketStrategy implements RateLimitStrategy {
             local capacity = tonumber(ARGV[1])
             local rate = tonumber(ARGV[2])
             local requested = tonumber(ARGV[3])
-            local now = tonumber(ARGV[4])
-            
+            local ttl = tonumber(ARGV[4])
+            local precision = tonumber(ARGV[5])
+
+            -- Issue #1: Redis 서버 시간 사용 (clock skew 방지)
+            local time = redis.call('TIME')
+            local now = tonumber(time[1]) + tonumber(time[2]) / 1000000
+
             local tokens_key = key .. ":tokens"
             local timestamp_key = key .. ":timestamp"
-            
+
             local last_tokens = tonumber(redis.call("GET", tokens_key))
             local last_refreshed = tonumber(redis.call("GET", timestamp_key))
-            
+
             if last_tokens == nil then
                 last_tokens = capacity
             end
-            
+
             if last_refreshed == nil then
                 last_refreshed = now
             end
-            
+
             -- 경과 시간 계산 및 토큰 리필
             local delta = math.max(0, now - last_refreshed)
             local filled_tokens = math.min(capacity, last_tokens + (delta * rate))
-            
+
             -- 요청 처리 가능 여부 확인
             local allowed = filled_tokens >= requested
             local new_tokens = filled_tokens
-            
+
             if allowed then
                 new_tokens = filled_tokens - requested
             end
-            
-            -- 상태 업데이트 (TTL)
-            local ttl = tonumber(ARGV[5])
-            local precision = tonumber(ARGV[6])
+
+            -- 상태 업데이트
             redis.call("SETEX", tokens_key, ttl, new_tokens)
             redis.call("SETEX", timestamp_key, ttl, now)
 
             return {
                 allowed and 1 or 0,
-                math.floor(new_tokens * precision),  -- 소수점 정밀도 적용
+                math.floor(new_tokens * precision),
                 capacity
             }
             """;
@@ -105,8 +108,7 @@ public class TokenBucketStrategy implements RateLimitStrategy {
     @Override
     public RateLimitResult allowRequest(String identifier) {
         String key = KEY_PREFIX + identifier;
-        double now = System.currentTimeMillis() / 1000.0;
-        
+
         List<Long> result = scriptExecutor.executeLuaScript(
                 LUA_SCRIPT,
                 List.of(key),
@@ -114,7 +116,6 @@ public class TokenBucketStrategy implements RateLimitStrategy {
                         String.valueOf(capacity),
                         String.valueOf(refillRate),
                         "1", // 요청당 토큰 1개
-                        String.valueOf(now),
                         String.valueOf(REDIS_TTL_SECONDS),
                         String.valueOf(DECIMAL_PRECISION)
                 )
