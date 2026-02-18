@@ -42,6 +42,7 @@ public class SlidingWindowLogStrategy implements RateLimitStrategy {
             local now = tonumber(time[1]) + tonumber(time[2]) / 1000000
 
             local log_key = key .. ":log"
+            local seq_key = key .. ":seq"
 
             -- 윈도우 밖의 오래된 요청 제거
             local window_start = now - window
@@ -54,9 +55,13 @@ public class SlidingWindowLogStrategy implements RateLimitStrategy {
             local allowed = current < limit
 
             if allowed then
-                -- Issue #4: math.random 제거 - Redis 서버 마이크로초로 고유 멤버 생성
-                -- time[1]=초, time[2]=마이크로초 (0-999999)로 충분히 고유함
-                local member = time[1] .. ":" .. time[2]
+                -- Issue #4: math.random 제거
+                -- time[1]:"time[2] 조합은 같은 마이크로초 내 복수 요청 시 ZADD가
+                -- 새 entry 추가 대신 기존 score를 갱신하여 undercounting 발생.
+                -- 원자적 INCR 시퀀스를 suffix로 추가하여 멤버 고유성 보장.
+                local seq = redis.call("INCR", seq_key)
+                redis.call("EXPIRE", seq_key, window * 2)
+                local member = time[1] .. ":" .. time[2] .. ":" .. seq
                 redis.call("ZADD", log_key, now, member)
                 redis.call("EXPIRE", log_key, window * 2)
                 current = current + 1
@@ -111,7 +116,7 @@ public class SlidingWindowLogStrategy implements RateLimitStrategy {
     @Override
     public void reset(String identifier) {
         String key = KEY_PREFIX + identifier;
-        scriptExecutor.deleteKeys(key + ":log");
+        scriptExecutor.deleteKeys(key + ":log", key + ":seq");
     }
     
     @Override
