@@ -43,14 +43,18 @@ public class GlobalExceptionHandler {
                         .build())
                 .build();
         
-        return ResponseEntity
+        // Issue #6: X-RateLimit-Reset이 null이면 빈 문자열 대신 헤더 자체를 생략
+        ResponseEntity.BodyBuilder builder = ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("X-RateLimit-Limit", String.valueOf(result.getLimit()))
                 .header("X-RateLimit-Remaining", String.valueOf(result.getRemaining()))
-                .header("X-RateLimit-Reset", result.getResetAt() != null ? 
-                        String.valueOf(result.getResetAt().getEpochSecond()) : "")
-                .header("X-RateLimit-Algorithm", result.getAlgorithm())
-                .body(response);
+                .header("X-RateLimit-Algorithm", result.getAlgorithm());
+
+        if (result.getResetAt() != null) {
+            builder.header("X-RateLimit-Reset", String.valueOf(result.getResetAt().getEpochSecond()));
+        }
+
+        return builder.body(response);
     }
     
     /**
