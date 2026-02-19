@@ -1,5 +1,6 @@
 package com.example.ratelimiter.presentation.controller;
 
+import com.example.ratelimiter.common.exception.InvalidRequestException;
 import com.example.ratelimiter.common.exception.RateLimitExceededException;
 import com.example.ratelimiter.domain.model.RateLimitResult;
 import com.example.ratelimiter.presentation.dto.RateLimitDto;
@@ -59,10 +60,13 @@ public class GlobalExceptionHandler {
     
     /**
      * 잘못된 요청 파라미터 예외 처리 (400)
-     * StrategyConfig 유효성 검사 등에서 발생
+     * StrategyConfig 유효성 검사 및 Strategy 생성자 검증에서 발생
+     *
+     * InvalidRequestException만 400으로 처리하여 의도하지 않은 IllegalArgumentException이
+     * 내부 정보를 노출하는 것을 방지
      */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<RateLimitDto.ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<RateLimitDto.ErrorResponse> handleInvalidRequest(InvalidRequestException ex) {
         log.warn("Invalid request parameter: {}", ex.getMessage());
 
         RateLimitDto.ErrorResponse response = RateLimitDto.ErrorResponse.builder()
