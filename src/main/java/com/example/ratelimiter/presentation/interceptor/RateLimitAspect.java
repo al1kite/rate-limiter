@@ -92,9 +92,15 @@ public class RateLimitAspect {
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         String[] paramNames = signature.getParameterNames();
         Object[] args = joinPoint.getArgs();
-        
+
+        // paramNames와 args 길이가 다를 경우 ArrayIndexOutOfBoundsException 방지
         if (paramNames != null) {
-            for (int i = 0; i < paramNames.length; i++) {
+            if (paramNames.length != args.length) {
+                log.warn("Parameter mismatch in method {}: expected {} parameters, but got {}. " +
+                         "This may cause SpEL expression failures.",
+                         signature.getMethod().getName(), paramNames.length, args.length);
+            }
+            for (int i = 0; i < Math.min(paramNames.length, args.length); i++) {
                 context.setVariable(paramNames[i], args[i]);
             }
         }

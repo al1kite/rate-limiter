@@ -1,5 +1,6 @@
 package com.example.ratelimiter.domain.strategy;
 
+import com.example.ratelimiter.common.exception.InvalidRequestException;
 import com.example.ratelimiter.domain.model.RateLimitMetadata;
 import com.example.ratelimiter.domain.model.RateLimitResult;
 import com.example.ratelimiter.infrastructure.redis.RedisScriptExecutor;
@@ -94,10 +95,10 @@ public class TokenBucketStrategy implements RateLimitStrategy {
      */
     public TokenBucketStrategy(RedisScriptExecutor scriptExecutor, int capacity, double refillRate) {
         if (capacity <= 0) {
-            throw new IllegalArgumentException("Capacity must be positive: " + capacity);
+            throw new InvalidRequestException("Capacity must be positive: " + capacity);
         }
         if (refillRate <= 0) {
-            throw new IllegalArgumentException("Refill rate must be positive: " + refillRate);
+            throw new InvalidRequestException("Refill rate must be positive: " + refillRate);
         }
 
         this.scriptExecutor = scriptExecutor;

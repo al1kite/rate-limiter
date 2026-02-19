@@ -1,5 +1,6 @@
 package com.example.ratelimiter.domain.strategy;
 
+import com.example.ratelimiter.common.exception.InvalidRequestException;
 import com.example.ratelimiter.domain.model.RateLimitResult;
 import com.example.ratelimiter.infrastructure.redis.RedisScriptExecutor;
 import lombok.extern.slf4j.Slf4j;
@@ -74,10 +75,10 @@ public class FixedWindowStrategy implements RateLimitStrategy {
     
     public FixedWindowStrategy(RedisScriptExecutor scriptExecutor, int limit, int windowSize) {
         if (limit <= 0) {
-            throw new IllegalArgumentException("Limit must be positive: " + limit);
+            throw new InvalidRequestException("Limit must be positive: " + limit);
         }
         if (windowSize <= 0) {
-            throw new IllegalArgumentException("Window size must be positive: " + windowSize);
+            throw new InvalidRequestException("Window size must be positive: " + windowSize);
         }
 
         this.scriptExecutor = scriptExecutor;

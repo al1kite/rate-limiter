@@ -1,5 +1,6 @@
 package com.example.ratelimiter.domain.strategy;
 
+import com.example.ratelimiter.common.exception.InvalidRequestException;
 import com.example.ratelimiter.domain.model.RateLimitMetadata;
 import com.example.ratelimiter.domain.model.RateLimitResult;
 import com.example.ratelimiter.infrastructure.redis.RedisScriptExecutor;
@@ -40,7 +41,7 @@ public class LeakyBucketStrategy implements RateLimitStrategy {
             local leak_rate = tonumber(ARGV[2])
             local ttl = tonumber(ARGV[3])
 
-            -- Issue #1: Redis 서버 시간 사용 (clock skew 방지)
+            -- Redis 서버 시간 사용 (clock skew 방지)
             local time = redis.call('TIME')
             local now = tonumber(time[1]) + tonumber(time[2]) / 1000000
 
@@ -58,10 +59,32 @@ public class LeakyBucketStrategy implements RateLimitStrategy {
                 queue_size = 0
             end
 
-            -- leak 계산 (시간에 따라 누출)
-            local delta = math.max(0, now - last_leak)
-            local leaked = math.floor(delta * leak_rate)
-            queue_size = math.max(0, queue_size - leaked)
+            -- Issue #2: 마지막 leak 시간 기반 정밀 계산
+            --
+            -- [기존 방식의 문제]
+            -- leaked = math.floor(delta * leak_rate)
+            -- → 매 호출마다 소수점 이하를 버리므로 누적 오차 발생
+            -- 예) leak_rate=0.5, 3초 경과 → leaked=1 (실제 1.5개여야 함, 0.5 손실)
+            --     이후 3초 경과 → leaked=1 (또 0.5 손실) → 6초간 총 2개만 소진
+            --     실제로는 6*0.5=3개 소진되어야 함
+            --
+            -- [방법 2: 정밀 시간 기반 계산]
+            -- leaked개를 소진하는 데 정확히 필요한 시간(time_for_leaked)만큼만
+            -- last_leak을 전진시켜, 나머지 시간이 다음 호출에 이월되도록 함
+            -- 예) leak_rate=0.5, 3초 경과
+            --     leaked = floor(3*0.5) = 1
+            --     time_for_leaked = 1/0.5 = 2초
+            --     last_leak += 2 (3이 아닌 2!)
+            --     → 다음 호출 시 elapsed는 1초부터 시작 → 오차 없음
+            local elapsed = math.max(0, now - last_leak)
+            local leaked = math.floor(elapsed * leak_rate)
+
+            if leaked > 0 then
+                queue_size = math.max(0, queue_size - leaked)
+                -- 소진된 정수 개에 정확히 대응하는 시간만큼만 timestamp 전진
+                local time_for_leaked = leaked / leak_rate
+                last_leak = last_leak + time_for_leaked
+            end
 
             -- 새 요청 추가 가능 여부
             local allowed = queue_size < capacity
@@ -70,9 +93,9 @@ public class LeakyBucketStrategy implements RateLimitStrategy {
                 queue_size = queue_size + 1
             end
 
-            -- 상태 업데이트
+            -- 상태 업데이트 (last_leak은 now가 아닌 정밀 계산된 값으로 저장)
             redis.call("SETEX", queue_key, ttl, queue_size)
-            redis.call("SETEX", timestamp_key, ttl, now)
+            redis.call("SETEX", timestamp_key, ttl, last_leak)
 
             return {
                 allowed and 1 or 0,
@@ -83,10 +106,10 @@ public class LeakyBucketStrategy implements RateLimitStrategy {
     
     public LeakyBucketStrategy(RedisScriptExecutor scriptExecutor, int capacity, double leakRate) {
         if (capacity <= 0) {
-            throw new IllegalArgumentException("Capacity must be positive: " + capacity);
+            throw new InvalidRequestException("Capacity must be positive: " + capacity);
         }
         if (leakRate <= 0) {
-            throw new IllegalArgumentException("Leak rate must be positive: " + leakRate);
+            throw new InvalidRequestException("Leak rate must be positive: " + leakRate);
         }
 
         this.scriptExecutor = scriptExecutor;
