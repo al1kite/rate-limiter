@@ -58,19 +58,40 @@ public class GlobalExceptionHandler {
     }
     
     /**
-     * 일반 예외 처리
+     * 잘못된 요청 파라미터 예외 처리 (400)
+     * StrategyConfig 유효성 검사 등에서 발생
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<RateLimitDto.ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("Invalid request parameter: {}", ex.getMessage());
+
+        RateLimitDto.ErrorResponse response = RateLimitDto.ErrorResponse.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Bad Request")
+                .message(ex.getMessage())
+                .timestamp(Instant.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    /**
+     * 일반 예외 처리 (500)
+     * 내부 구현 세부 사항이 클라이언트에 노출되지 않도록 고정 메시지 사용
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<RateLimitDto.ErrorResponse> handleGenericException(Exception ex) {
         log.error("Unexpected error occurred", ex);
-        
+
         RateLimitDto.ErrorResponse response = RateLimitDto.ErrorResponse.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error("Internal Server Error")
-                .message(ex.getMessage())
+                .message("An internal server error occurred. Please try again later.")
                 .timestamp(Instant.now())
                 .build();
-        
+
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(response);
