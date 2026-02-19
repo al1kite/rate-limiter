@@ -38,6 +38,7 @@ public class RedisScriptExecutorImpl implements RedisScriptExecutor {
     private final Map<String, DefaultRedisScript<List>> scriptCache = new ConcurrentHashMap<>();
 
     @Override
+    @SuppressWarnings("unchecked") // DefaultRedisScript<List>의 raw List는 Spring API 제약
     public List<Long> executeLuaScript(String script, List<String> keys, List<String> args) {
         try {
             // Issue #3: 캐시에서 스크립트 조회 또는 생성
