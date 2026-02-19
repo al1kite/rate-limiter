@@ -34,17 +34,18 @@ public class RateLimiterServiceImpl implements RateLimiterService {
         
         try {
             RateLimitResult result = strategy.allowRequest(identifier);
-            
+
             if (log.isDebugEnabled()) {
-                log.debug("Rate limit check - Algorithm: {}, Identifier: {}, Allowed: {}", 
+                log.debug("Rate limit check - Algorithm: {}, Identifier: {}, Allowed: {}",
                         algorithmType, identifier, result.isAllowed());
             }
-            
+
             return result;
-            
-        } catch (Exception e) {
+
+        } catch (RuntimeException e) {
+            // RuntimeException만 catch하여 Error(OOM 등)는 상위로 전파
+            // Fail-open: Redis 장애 시 요청 허용 (서비스 가용성 우선)
             log.error("Rate limit check failed for {} with algorithm {}", identifier, algorithmType, e);
-            // Fail-open: 에러 발생 시 요청 허용
             return RateLimitResult.allowed(algorithmType.name(), 0, Integer.MAX_VALUE, null);
         }
     }
@@ -56,8 +57,8 @@ public class RateLimiterServiceImpl implements RateLimiterService {
         try {
             strategy.reset(identifier);
             log.info("Rate limit reset - Algorithm: {}, Identifier: {}", algorithmType, identifier);
-            
-        } catch (Exception e) {
+
+        } catch (RuntimeException e) {
             log.error("Rate limit reset failed for {} with algorithm {}", identifier, algorithmType, e);
         }
     }

@@ -93,8 +93,9 @@ public class RateLimitAspect {
         String[] paramNames = signature.getParameterNames();
         Object[] args = joinPoint.getArgs();
         
+        // paramNames와 args 길이가 다를 경우 ArrayIndexOutOfBoundsException 방지
         if (paramNames != null) {
-            for (int i = 0; i < paramNames.length; i++) {
+            for (int i = 0; i < Math.min(paramNames.length, args.length); i++) {
                 context.setVariable(paramNames[i], args[i]);
             }
         }
