@@ -1,5 +1,6 @@
 package com.example.ratelimiter.domain.factory;
 
+import com.example.ratelimiter.common.exception.InvalidRequestException;
 import com.example.ratelimiter.domain.strategy.*;
 import com.example.ratelimiter.infrastructure.redis.RedisScriptExecutor;
 import lombok.RequiredArgsConstructor;
@@ -86,7 +87,7 @@ public class RateLimitStrategyFactory {
          */
         public StrategyConfig capacity(int capacity) {
             if (capacity <= 0) {
-                throw new IllegalArgumentException("Capacity must be positive: " + capacity);
+                throw new InvalidRequestException("Capacity must be positive: " + capacity);
             }
             this.capacity = capacity;
             return this;
@@ -97,7 +98,7 @@ public class RateLimitStrategyFactory {
          */
         public StrategyConfig refillRate(double refillRate) {
             if (refillRate <= 0) {
-                throw new IllegalArgumentException("Refill rate must be positive: " + refillRate);
+                throw new InvalidRequestException("Refill rate must be positive: " + refillRate);
             }
             this.refillRate = refillRate;
             return this;
@@ -108,7 +109,7 @@ public class RateLimitStrategyFactory {
          */
         public StrategyConfig leakRate(double leakRate) {
             if (leakRate <= 0) {
-                throw new IllegalArgumentException("Leak rate must be positive: " + leakRate);
+                throw new InvalidRequestException("Leak rate must be positive: " + leakRate);
             }
             this.leakRate = leakRate;
             return this;
@@ -119,7 +120,7 @@ public class RateLimitStrategyFactory {
          */
         public StrategyConfig limit(int limit) {
             if (limit <= 0) {
-                throw new IllegalArgumentException("Limit must be positive: " + limit);
+                throw new InvalidRequestException("Limit must be positive: " + limit);
             }
             this.limit = limit;
             return this;
@@ -130,7 +131,7 @@ public class RateLimitStrategyFactory {
          */
         public StrategyConfig windowSize(int windowSize) {
             if (windowSize <= 0) {
-                throw new IllegalArgumentException("Window size must be positive: " + windowSize);
+                throw new InvalidRequestException("Window size must be positive: " + windowSize);
             }
             this.windowSize = windowSize;
             return this;

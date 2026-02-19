@@ -1,5 +1,6 @@
 package com.example.ratelimiter.domain.strategy;
 
+import com.example.ratelimiter.common.exception.InvalidRequestException;
 import com.example.ratelimiter.domain.model.RateLimitMetadata;
 import com.example.ratelimiter.domain.model.RateLimitResult;
 import com.example.ratelimiter.infrastructure.redis.RedisScriptExecutor;
@@ -105,10 +106,10 @@ public class LeakyBucketStrategy implements RateLimitStrategy {
     
     public LeakyBucketStrategy(RedisScriptExecutor scriptExecutor, int capacity, double leakRate) {
         if (capacity <= 0) {
-            throw new IllegalArgumentException("Capacity must be positive: " + capacity);
+            throw new InvalidRequestException("Capacity must be positive: " + capacity);
         }
         if (leakRate <= 0) {
-            throw new IllegalArgumentException("Leak rate must be positive: " + leakRate);
+            throw new InvalidRequestException("Leak rate must be positive: " + leakRate);
         }
 
         this.scriptExecutor = scriptExecutor;
