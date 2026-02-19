@@ -1,0 +1,10 @@
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+
+logging:
+  level:
+    com.example.ratelimiter: DEBUG
