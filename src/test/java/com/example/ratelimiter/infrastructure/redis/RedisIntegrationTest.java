@@ -170,6 +170,54 @@ class RedisIntegrationTest {
     }
 
     @Test
+    @DisplayName("executeRawLuaScript - Long/String 혼합 타입 반환")
+    void executeRawLuaScriptTest() {
+        // given - 숫자와 tostring() 문자열을 혼합 반환하는 Lua 스크립트
+        String script = """
+                return {1, tostring(3.14159265358979), 42}
+                """;
+
+        // when
+        List<Object> result = scriptExecutor.executeRawLuaScript(
+                script, List.of(), List.of()
+        );
+
+        // then
+        assertThat(result).hasSize(3);
+        assertThat(result.get(0)).isInstanceOf(Long.class);
+        assertThat((Long) result.get(0)).isEqualTo(1L);
+        assertThat(result.get(1)).isInstanceOf(String.class);
+        assertThat(Double.parseDouble((String) result.get(1))).isCloseTo(3.14159265358979, within(1e-10));
+        assertThat(result.get(2)).isInstanceOf(Long.class);
+        assertThat((Long) result.get(2)).isEqualTo(42L);
+    }
+
+    @Test
+    @DisplayName("tostring()으로 소수점 3자리 이하 정밀도 보존 확인")
+    void tostringPrecisionPreservationTest() {
+        // given - 구 방식 math.floor(x * 100) / 100 에서 0으로 절삭되는 값
+        // 0.000001 * 100 = 0.0001 → math.floor → 0 → 정밀도 손실
+        // tostring(0.000001) → "1e-06" → 정밀도 보존
+        String script = """
+                local tiny = 0.000001
+                local old_way = math.floor(tiny * 100)
+                return {old_way, tostring(tiny)}
+                """;
+
+        // when
+        List<Object> result = scriptExecutor.executeRawLuaScript(
+                script, List.of(), List.of()
+        );
+
+        // then
+        long oldWay = (Long) result.get(0);
+        double newWay = Double.parseDouble((String) result.get(1));
+
+        assertThat(oldWay).isZero();              // 구 방식: 정밀도 손실
+        assertThat(newWay).isEqualTo(0.000001);   // 신 방식: 정밀도 보존
+    }
+
+    @Test
     @DisplayName("스크립트 캐싱 확인 - 동일 스크립트 여러 번 실행")
     void scriptCachingTest() {
         // given

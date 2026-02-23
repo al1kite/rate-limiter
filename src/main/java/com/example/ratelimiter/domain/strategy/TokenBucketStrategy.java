@@ -34,7 +34,6 @@ public class TokenBucketStrategy implements RateLimitStrategy {
 
     private static final String KEY_PREFIX = "rate_limit:token_bucket:";
     private static final int REDIS_TTL_SECONDS = 3600;  // 1시간
-    private static final int DECIMAL_PRECISION = 100;   // 소수점 2자리 정밀도
 
     private final RedisScriptExecutor scriptExecutor;
     private final int capacity;      // 버킷 최대 용량
@@ -46,7 +45,6 @@ public class TokenBucketStrategy implements RateLimitStrategy {
             local rate = tonumber(ARGV[2])
             local requested = tonumber(ARGV[3])
             local ttl = tonumber(ARGV[4])
-            local precision = tonumber(ARGV[5])
 
             -- Issue #1: Redis 서버 시간 사용 (clock skew 방지)
             local time = redis.call('TIME')
@@ -82,9 +80,10 @@ public class TokenBucketStrategy implements RateLimitStrategy {
             redis.call("SETEX", tokens_key, ttl, new_tokens)
             redis.call("SETEX", timestamp_key, ttl, now)
 
+            -- Issue #3: tostring()으로 부동소수점 정밀도 보존
             return {
                 allowed and 1 or 0,
-                math.floor(new_tokens * precision),
+                tostring(new_tokens),
                 capacity
             }
             """;
@@ -110,21 +109,20 @@ public class TokenBucketStrategy implements RateLimitStrategy {
     public RateLimitResult allowRequest(String identifier) {
         String key = KEY_PREFIX + identifier;
 
-        List<Long> result = scriptExecutor.executeLuaScript(
+        List<Object> result = scriptExecutor.executeRawLuaScript(
                 LUA_SCRIPT,
                 List.of(key),
                 List.of(
                         String.valueOf(capacity),
                         String.valueOf(refillRate),
                         "1", // 요청당 토큰 1개
-                        String.valueOf(REDIS_TTL_SECONDS),
-                        String.valueOf(DECIMAL_PRECISION)
+                        String.valueOf(REDIS_TTL_SECONDS)
                 )
         );
 
-        boolean allowed = result.get(0) == 1;
-        double tokens = result.get(1) / (double) DECIMAL_PRECISION;
-        long limit = result.get(2);
+        boolean allowed = ((Long) result.get(0)) == 1;
+        double tokens = Double.parseDouble((String) result.get(1));
+        long limit = (Long) result.get(2);
         
         RateLimitMetadata metadata = RateLimitMetadata.forTokenBucket(tokens);
         

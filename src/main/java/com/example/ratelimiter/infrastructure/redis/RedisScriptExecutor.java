@@ -20,7 +20,20 @@ public interface RedisScriptExecutor {
      * @return 실행 결과
      */
     List<Long> executeLuaScript(String script, List<String> keys, List<String> args);
-    
+
+    /**
+     * Lua 스크립트를 실행하고 원시 타입(Long/String 혼합) 결과 반환
+     *
+     * Lua에서 숫자는 Long, tostring()은 String으로 반환되므로
+     * 부동소수점 정밀도가 필요한 경우 이 메서드를 사용한다.
+     *
+     * @param script Lua 스크립트
+     * @param keys Redis 키 목록
+     * @param args 스크립트 인자 목록
+     * @return Long/String 혼합 결과 리스트
+     */
+    List<Object> executeRawLuaScript(String script, List<String> keys, List<String> args);
+
     /**
      * 키 삭제
      * 
