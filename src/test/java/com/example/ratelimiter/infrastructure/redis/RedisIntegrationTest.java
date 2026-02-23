@@ -218,6 +218,30 @@ class RedisIntegrationTest {
     }
 
     @Test
+    @DisplayName("TokenBucket 저장→조회 전체 경로 소수점 정밀도 보존 확인")
+    void tokenBucketStoragePrecisionTest() {
+        // given - 고속 refill rate로 소수점 정밀도가 중요한 시나리오
+        TokenBucketStrategy strategy = new TokenBucketStrategy(scriptExecutor, 10, 1000.0);
+
+        // when - 요청으로 토큰 소비
+        RateLimitResult result = strategy.allowRequest("precision-flow");
+        assertThat(result.isAllowed()).isTrue();
+
+        // then - Redis에 저장된 토큰 값이 소수점 정밀도를 유지하는지 직접 검증
+        String storedTokens = redisTemplate.opsForValue()
+                .get("rate_limit:token_bucket:precision-flow:tokens");
+        assertThat(storedTokens).isNotNull();
+        double tokens = Double.parseDouble(storedTokens);
+        assertThat(tokens).isBetween(8.0, 10.0);
+
+        // 타임스탬프도 마이크로초 정밀도(소수점 포함)를 유지해야 함
+        String storedTimestamp = redisTemplate.opsForValue()
+                .get("rate_limit:token_bucket:precision-flow:timestamp");
+        assertThat(storedTimestamp).isNotNull();
+        assertThat(storedTimestamp).contains(".");
+    }
+
+    @Test
     @DisplayName("스크립트 캐싱 확인 - 동일 스크립트 여러 번 실행")
     void scriptCachingTest() {
         // given

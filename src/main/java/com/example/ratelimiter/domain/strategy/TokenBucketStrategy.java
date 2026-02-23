@@ -76,11 +76,9 @@ public class TokenBucketStrategy implements RateLimitStrategy {
                 new_tokens = filled_tokens - requested
             end
 
-            -- 상태 업데이트
-            redis.call("SETEX", tokens_key, ttl, new_tokens)
-            redis.call("SETEX", timestamp_key, ttl, now)
-
-            -- Issue #3: tostring()으로 부동소수점 정밀도 보존
+            -- Issue #3: tostring()으로 부동소수점 정밀도 보존 (저장 + 반환)
+            redis.call("SETEX", tokens_key, ttl, tostring(new_tokens))
+            redis.call("SETEX", timestamp_key, ttl, tostring(now))
             return {
                 allowed and 1 or 0,
                 tostring(new_tokens),
